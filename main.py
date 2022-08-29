@@ -24,7 +24,7 @@ def run():
                 if event.key == pygame.K_ESCAPE:
                     done = True
                     
-                if event.type == pygame.K_F2:
+                if event.key == pygame.K_F2:
                     pygame.image.save(screen, "SCREENSHOT.png")
                     
         screen.fill((0, 0, 0))
