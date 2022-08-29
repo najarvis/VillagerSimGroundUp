@@ -2,7 +2,6 @@ import pygame
 
 from globals import *
 
-from tile import Tile
 from world import World
 
 def run():
