@@ -12,5 +12,8 @@ class Tile:
             
         self.color = (255, 255, 255)
 
-    def draw(self, surface):
-        pygame.draw.rect(surface, self.color, (self.position.x, self.position.y, self.width, self.height))
+    def draw(self, surface, position_override=None):
+        pos = self.position
+        if position_override is not None:
+            pos = position_override
+        pygame.draw.rect(surface, self.color, (pos.x, pos.y, self.width, self.height))

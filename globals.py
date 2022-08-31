@@ -1,4 +1,5 @@
 SCREEN_SIZE = WIDTH, HEIGHT = (640, 640)
 
-WORLD_SIZE = (80, 80)
-TILE_SIZE = (32, 32)
+# If you want to see all the tiles at once, WORLD_SIZE * TILE_SIZE == SCREEN_SIZE
+WORLD_SIZE = (320, 320)
+TILE_SIZE = (2, 2)

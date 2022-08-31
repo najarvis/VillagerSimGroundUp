@@ -1,14 +1,13 @@
 import pygame
 
-from globals import *
-
+from globals import SCREEN_SIZE
 from world import World
 
 def run():
     screen = pygame.display.set_mode(SCREEN_SIZE)
 
-    # Main game 
-    world = World(WORLD_SIZE)
+    # Main world instance 
+    world = World()
     
     clock = pygame.time.Clock()
 
