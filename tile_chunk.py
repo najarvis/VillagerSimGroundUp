@@ -1,6 +1,6 @@
 import pygame
 
-from globals import TILE_SIZE, CHUNK_SIZE
+from globals import DRAW_CHUNK_OUTLINES, TILE_SIZE, CHUNK_SIZE
 
 # Turns out "Chunk" is a python built-in
 class TileChunk:
@@ -26,3 +26,7 @@ class TileChunk:
     def draw(self, surface) -> None:
         surface.blit(self.surface, (self.coordinate.x * self.width_px,
                                     self.coordinate.y * self.height_px))
+        if DRAW_CHUNK_OUTLINES:
+            pygame.draw.rect(surface, (255, 0, 0), (self.coordinate.x * self.width_px,
+                                                    self.coordinate.y * self.height_px,
+                                                    self.width_px, self.height_px), 1)

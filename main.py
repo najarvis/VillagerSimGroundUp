@@ -13,7 +13,8 @@ def run():
 
     done = False
     while not done:
-        delta = clock.tick() / 1000.0 # time passed in seconds since last call
+        # Limit to 60 fps to avoid doing unnecessary work on the CPU
+        delta = clock.tick(60) / 1000.0 # time passed in seconds since last call
         
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -25,7 +26,11 @@ def run():
                     
                 if event.key == pygame.K_F2:
                     pygame.image.save(screen, "SCREENSHOT.png")
-                    
+
+                if event.key == pygame.K_SPACE:
+                    world.generate()
+                    world.render_chunks()
+
         screen.fill((0, 0, 0))
         
         # Draw the screen
