@@ -3,6 +3,9 @@ import math
 import random
 import pygame
 
+import time
+from camera import Camera
+
 from procgen.procgen.noise import perlin2D
 
 from globals import TILE_SIZE, WORLD_SIZE, CHUNK_SIZE
@@ -35,8 +38,22 @@ class World():
 
         self.chunks = [] # list[list[TileChunk]]
         
+        self.camera = Camera(pygame.Vector2(WORLD_SIZE[0] / 2, WORLD_SIZE[1] / 2))
+        #self.zoom_timer = 0.0
+
+        t0 = time.time()
         self.generate()
+        t1 = time.time()
         self.render_chunks()
+        t2 = time.time()
+
+        print(f"Generation took {round(t1-t0,2)}s")
+        print(f"Drawing chunks took {round(t2-t1,2)}s")
+
+    def update(self, delta: float) -> None:
+        #self.zoom_timer += delta
+        #self.camera.scale = (math.sin(self.zoom_timer * 2) + 1.5)
+        pass
 
     def generate(self) -> None:
         """Generates new terrain. Overwrites previous terrain."""
@@ -47,10 +64,9 @@ class World():
         rand_x = random.uniform(0, 1000)
         rand_y = random.uniform(0, 1000)
         terrain_scale = 8.0 # Higher = more fine detail for the base terrain
-        perturb_scale = 16.0 # How detailed the perturbation is
+        perturb_scale = 20.0 # How detailed the perturbation is
 
         center = pygame.Vector2(WORLD_SIZE[0] / 2, WORLD_SIZE[1] / 2)
-        min_h, max_h = 0, 0
 
         for x in range(WORLD_SIZE[0]):
             for y in range(WORLD_SIZE[1]):
@@ -102,8 +118,6 @@ class World():
                     tile_type = Snow
                     
                 self.tiles[x][y] = tile_type(pygame.Vector2(x * self.tile_size, y * self.tile_size), self.tile_size, rel_height)
-        
-        print(min_h, max_h)
 
     def render_chunks(self) -> None:
         """Instead of rendering every tile every frame, we can render the tiles to chunks, and then draw whole
@@ -118,7 +132,7 @@ class World():
             chunk_row = []
             for y in range(WORLD_SIZE[1] // CHUNK_SIZE[1]):
                 # The chunks are surfaces we pre-render to speed up drawing and updating the tiles each frame
-                new_chunk = TileChunk(pygame.Vector2(x, y))
+                new_chunk = TileChunk(pygame.Vector2(x * CHUNK_SIZE[0], y * CHUNK_SIZE[1]))
                 chunk_surf = new_chunk.get_chunk_surf()
 
                 for tile_x in range(x * CHUNK_SIZE[0], x * CHUNK_SIZE[0] + CHUNK_SIZE[0]):
@@ -139,4 +153,4 @@ class World():
 
         for chunk_row in self.chunks:
             for chunk in chunk_row:
-                chunk.draw(surface)
+                chunk.draw(surface, self.camera)

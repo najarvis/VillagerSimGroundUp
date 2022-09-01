@@ -1,4 +1,6 @@
+from math import ceil
 import pygame
+from camera import Camera
 
 from globals import DRAW_CHUNK_OUTLINES, TILE_SIZE, CHUNK_SIZE
 
@@ -23,10 +25,17 @@ class TileChunk:
     def get_chunk_surf(self) -> pygame.Surface:
         return self.surface
 
-    def draw(self, surface) -> None:
-        surface.blit(self.surface, (self.coordinate.x * self.width_px,
-                                    self.coordinate.y * self.height_px))
-        if DRAW_CHUNK_OUTLINES:
-            pygame.draw.rect(surface, (255, 0, 0), (self.coordinate.x * self.width_px,
-                                                    self.coordinate.y * self.height_px,
-                                                    self.width_px, self.height_px), 1)
+    def draw(self, surface, camera: Camera) -> None:
+        # TODO: Using ceil here to avoid annoying lines, but is causing some warping
+        scaled_surf = pygame.transform.scale(self.surface, (ceil(self.width_px  * camera.scale),
+                                                            ceil(self.height_px * camera.scale)))
+
+        vec_to_camera = (self.coordinate - camera.position) * camera.scale
+        adjusted_coord = pygame.Vector2(vec_to_camera.x * TILE_SIZE[0], vec_to_camera.y * TILE_SIZE[1])
+
+        surface.blit(scaled_surf, adjusted_coord)
+
+        # if DRAW_CHUNK_OUTLINES:
+        #     pygame.draw.rect(surface, (255, 0, 0), (self.coordinate.x * self.width_px,
+        #                                             self.coordinate.y * self.height_px,
+        #                                             self.width_px, self.height_px), 1)
