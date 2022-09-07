@@ -59,16 +59,16 @@ def run():
         # Pan if the user has their mouse on the outside of the screen
         if pygame.mouse.get_focused():
             if pos.x < SCREEN_SIZE[0] * 0.10:
-                world.camera.position.x -= 1
+                world.camera.position.x -= 1 / world.camera.scale
 
             elif pos.x > SCREEN_SIZE[0] * 0.90:
-                world.camera.position.x += 1
+                world.camera.position.x += 1 / world.camera.scale
 
             if pos.y < SCREEN_SIZE[1] * 0.10:
-                world.camera.position.y -= 1
+                world.camera.position.y -= 1 / world.camera.scale
 
             elif pos.y > SCREEN_SIZE[1] * 0.90:
-                world.camera.position.y += 1
+                world.camera.position.y += 1 / world.camera.scale
 
         world.update(delta)
 

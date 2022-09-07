@@ -30,8 +30,6 @@ class TileChunk:
         return self.surface
 
     def draw(self, surface, camera: Camera) -> None:
-        # TODO: Using ceil here to avoid annoying lines, but is causing some warping
-        # Note: It does not seem to always remove the lines. Will need to revisit
 
         adjusted_coord = camera.world_to_screen(self.coordinate)
 
@@ -39,12 +37,14 @@ class TileChunk:
         bounds_rect.w *= camera.scale
         bounds_rect.h *= camera.scale
         bounds_rect.topleft = adjusted_coord
+        # Don't do the work of scaling an image if it won't be on the screen
         if not bounds_rect.colliderect(TileChunk.SCREEN_RECT):
-            # Don't do the work of scaling an image if it won't be on the screen
             return
 
+        # Don't scale an image if the camera hasn't changed scales
         if camera.scale != self._last_scale:
-            # Don't scale an image if the camera hasn't changed scales
+            # TODO: Using ceil here to avoid annoying lines, but is causing some warping
+            # Note: It does not seem to always remove the lines. Will need to revisit
             self.scaled_surface = pygame.transform.scale(self.surface, (ceil(self.width_px  * camera.scale),
                                                                         ceil(self.height_px * camera.scale)))
             self._last_scale = camera.scale
@@ -53,7 +53,4 @@ class TileChunk:
         surface.blit(self.scaled_surface, adjusted_coord)
 
         if DRAW_CHUNK_OUTLINES:
-            pygame.draw.rect(surface, (255, 0, 0), (adjusted_coord.x,
-                                                    adjusted_coord.y,
-                                                    self.width_px * camera.scale,
-                                                    self.height_px * camera.scale), 1)
+            pygame.draw.rect(surface, (255, 0, 0), bounds_rect, 1)

@@ -24,6 +24,10 @@ def easeInExpo(x: float) -> float:
 
     return pow(2, 10 * min(x, 1) - 10)
 
+def noise2D(x: float, y: float) -> float:
+    """perlin2D noise from 0-1"""
+    return perlin2D(x, y) + 0.5
+
 class World():
     """Singleton that holds the state of the game world.
     
@@ -65,28 +69,34 @@ class World():
         rand_y = random.uniform(0, 1000)
         terrain_scale = 8.0 # Higher = more fine detail for the base terrain
         perturb_scale = 20.0 # How detailed the perturbation is
+        perturb_range = 0.1 # How far away a coordinate can be offset by the perturbation
 
         center = pygame.Vector2(WORLD_SIZE[0] / 2, WORLD_SIZE[1] / 2)
 
         for x in range(WORLD_SIZE[0]):
             for y in range(WORLD_SIZE[1]):
                 # Perturbing will adjust what coordinate we're looking at in the noise function
-                perturb_amount = perlin2D((x + rand_x) * perturb_scale / WORLD_SIZE[0], (y + rand_y) * perturb_scale / WORLD_SIZE[1])
-                perturb_amount /= 16.0 # Increase this number to reduce the magnitude of the perturbation 
-                # perturb_amount *= 0.0625 # Alternate way to do above. Not sure which makes more sense
+                # Add 3 octaves of noise for the perturbation. May be overkill but looks nice
+                perturb_noise_coord = pygame.Vector2((x + rand_x) * perturb_scale / WORLD_SIZE[0],
+                                                     (y + rand_y) * perturb_scale / WORLD_SIZE[1])
+                perturb_amount = noise2D(*(perturb_noise_coord)) + \
+                                 0.5 * noise2D(*(perturb_noise_coord * 2)) + \
+                                 0.25 * noise2D(*(perturb_noise_coord * 4))
+                perturb_amount /= (1 + 0.5 + 0.25) # Normalize range to [0, 1]
 
+                # We create an offset by treating the noise value (perturb_amount) as a
+                # random angle, then creating a vector pointing in that direction.
                 angle = math.pi * 2 * perturb_amount
+                perturb_x = math.cos(angle) * perturb_range
+                perturb_y = math.sin(angle) * perturb_range
 
-                perturb_x = math.cos(angle)
-                perturb_y = math.sin(angle)
-
-                # perlin2D returns values in the -0.5 to 0.5 range. Add 1 to make that 0.5 to 1.5
-                p_val = perlin2D((x / WORLD_SIZE[0]) * terrain_scale + rand_x + perturb_x, 
-                                 (y / WORLD_SIZE[1]) * terrain_scale + rand_y + perturb_y
-                        ) + 1.0
-
-                # 0.33 to 1.0 now
-                p_val /= 1.5
+                # Add 3 octaves of noise for the height. Add the pertub coordinate to the noise coordinate.
+                noise_coord = pygame.Vector2((x / WORLD_SIZE[0]) * terrain_scale + rand_x + perturb_x, 
+                                             (y / WORLD_SIZE[1]) * terrain_scale + rand_y + perturb_y)
+                p_val = noise2D(*noise_coord) + \
+                        0.50 * noise2D(*(noise_coord * 2)) + \
+                        0.25 * noise2D(*(noise_coord * 4))
+                p_val /= (1 + 0.5 + 0.25) # Normalize range to [0, 1]
                 
                 # Distance from the center, divided by the distance to the closest edge. Will
                 # return 1 for coordinates on the midpoints of edges and > 1 for values closer to the corners
@@ -100,17 +110,17 @@ class World():
 
                 tile_type = None
 
-                if height < 0.4:
+                if height < 0.3:
                     tile_type = Water
-                    rel_height = max(0, height) / 0.4
-                elif height < 0.45:
+                    rel_height = max(0, height) / 0.3
+                elif height < 0.35:
                     tile_type = Sand
-                elif height < 0.55:
+                elif height < 0.40:
                     tile_type = Dirt
-                    rel_height = ((height - 0.45) / 0.3) + 0.7
+                    rel_height = ((height - 0.35) / 0.4) + 0.7
                 elif height < 0.8:
                     tile_type = Grass
-                    rel_height = ((height - 0.55) / 0.5) + 0.5
+                    rel_height = ((height - 0.45) / 0.8) + 0.5
                 elif height < 0.95:
                     tile_type = Stone
                     rel_height = ((height - 0.8) / 0.3) + 0.5
