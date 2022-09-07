@@ -1,0 +1,10 @@
+- core controls
+    - zooming
+    - panning
+- world generation
+    - erosion (hydraulic / thermal)
+    - rivers
+    - vegetation
+- biomes
+    - temperature
+    - humidity / moisture

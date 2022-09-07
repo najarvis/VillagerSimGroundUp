@@ -3,6 +3,9 @@ import math
 import random
 import pygame
 
+import time
+from camera import Camera
+
 from procgen.procgen.noise import perlin2D
 
 from globals import TILE_SIZE, WORLD_SIZE, CHUNK_SIZE
@@ -35,8 +38,22 @@ class World():
 
         self.chunks = [] # list[list[TileChunk]]
         
+        self.camera = Camera(pygame.Vector2(WORLD_SIZE[0] / 2, WORLD_SIZE[1] / 2))
+        #self.zoom_timer = 0.0
+
+        t0 = time.time()
         self.generate()
+        t1 = time.time()
         self.render_chunks()
+        t2 = time.time()
+
+        print(f"Generation took {round(t1-t0,2)}s")
+        print(f"Drawing chunks took {round(t2-t1,2)}s")
+
+    def update(self, delta: float) -> None:
+        #self.zoom_timer += delta
+        #self.camera.scale = (math.sin(self.zoom_timer * 2) + 1.5)
+        pass
 
     def generate(self) -> None:
         """Generates new terrain. Overwrites previous terrain."""
@@ -44,20 +61,19 @@ class World():
         # rand_x and rand_y are effectively the "seed" for the noise, but 
         # are more accurately the position from which we start looking at
         # the noise function
-        rand_x = random.random()
-        rand_y = random.random()
+        rand_x = random.uniform(0, 1000)
+        rand_y = random.uniform(0, 1000)
         terrain_scale = 8.0 # Higher = more fine detail for the base terrain
-        perturb_scale = 16.0 # How detailed the perturbation is
-        p_vals = []
+        perturb_scale = 20.0 # How detailed the perturbation is
 
         center = pygame.Vector2(WORLD_SIZE[0] / 2, WORLD_SIZE[1] / 2)
 
         for x in range(WORLD_SIZE[0]):
             for y in range(WORLD_SIZE[1]):
                 # Perturbing will adjust what coordinate we're looking at in the noise function
-                perturb_amount = perlin2D(x * perturb_scale / WORLD_SIZE[0], y * perturb_scale / WORLD_SIZE[1])
+                perturb_amount = perlin2D((x + rand_x) * perturb_scale / WORLD_SIZE[0], (y + rand_y) * perturb_scale / WORLD_SIZE[1])
                 perturb_amount /= 16.0 # Increase this number to reduce the magnitude of the perturbation 
-                # perturb_amount *= 0.125 # Alternate way to do above. Not sure which makes more sense
+                # perturb_amount *= 0.0625 # Alternate way to do above. Not sure which makes more sense
 
                 angle = math.pi * 2 * perturb_amount
 
@@ -77,25 +93,31 @@ class World():
                 radial_value = pygame.Vector2(x, y).distance_to(center) / min(center.x, center.y)
 
                 # don't remove much near the middle, only on the edges
-                p_val -= easeInExpo(radial_value)
+                height = p_val - easeInExpo(radial_value)
 
-                p_vals.append(p_val)
+                # rel_height controls the extra shadow drawn on the tiles. The lower the value the darker [0, 1]
+                rel_height = 1.0
 
                 tile_type = None
-                if p_val < 0.4:
+
+                if height < 0.4:
                     tile_type = Water
-                elif p_val < 0.45:
+                    rel_height = max(0, height) / 0.4
+                elif height < 0.45:
                     tile_type = Sand
-                elif p_val < 0.55:
+                elif height < 0.55:
                     tile_type = Dirt
-                elif p_val < 0.7:
+                    rel_height = ((height - 0.45) / 0.3) + 0.7
+                elif height < 0.8:
                     tile_type = Grass
-                elif p_val < 0.9:
+                    rel_height = ((height - 0.55) / 0.5) + 0.5
+                elif height < 0.95:
                     tile_type = Stone
+                    rel_height = ((height - 0.8) / 0.3) + 0.5
                 else:
                     tile_type = Snow
                     
-                self.tiles[x][y] = tile_type(pygame.Vector2(x * self.tile_size, y * self.tile_size), self.tile_size)
+                self.tiles[x][y] = tile_type(pygame.Vector2(x * self.tile_size, y * self.tile_size), self.tile_size, rel_height)
 
     def render_chunks(self) -> None:
         """Instead of rendering every tile every frame, we can render the tiles to chunks, and then draw whole
@@ -110,7 +132,7 @@ class World():
             chunk_row = []
             for y in range(WORLD_SIZE[1] // CHUNK_SIZE[1]):
                 # The chunks are surfaces we pre-render to speed up drawing and updating the tiles each frame
-                new_chunk = TileChunk(pygame.Vector2(x, y))
+                new_chunk = TileChunk(pygame.Vector2(x * CHUNK_SIZE[0], y * CHUNK_SIZE[1]))
                 chunk_surf = new_chunk.get_chunk_surf()
 
                 for tile_x in range(x * CHUNK_SIZE[0], x * CHUNK_SIZE[0] + CHUNK_SIZE[0]):
@@ -131,4 +153,4 @@ class World():
 
         for chunk_row in self.chunks:
             for chunk in chunk_row:
-                chunk.draw(surface)
+                chunk.draw(surface, self.camera)
