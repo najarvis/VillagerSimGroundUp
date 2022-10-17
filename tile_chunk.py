@@ -15,13 +15,15 @@ class TileChunk:
 
     SCREEN_RECT = pygame.Rect((0, 0, *SCREEN_SIZE))
 
-    def __init__(self, coordinate: pygame.Vector2):
+    def __init__(self, coordinate: pygame.Vector2, world=None):
         self.coordinate = coordinate # These are in tile coordinates, not pixel coordinates
         self.width_px  = CHUNK_SIZE[0] * TILE_SIZE[0]
         self.height_px = CHUNK_SIZE[1] * TILE_SIZE[1]
         self.surface = pygame.Surface((self.width_px, self.height_px))
         self.scaled_surface = None
         self._last_scale = None
+        self.world = world
+        self.tiles = [] # Store tiles here
 
     def draw_to_chunk(self, surface, coordinate) -> None:
         self.surface.blit(surface, coordinate)
@@ -30,13 +32,12 @@ class TileChunk:
         return self.surface
 
     def draw(self, surface, camera: Camera) -> None:
-
-        adjusted_coord = camera.world_to_screen(self.coordinate)
+        screen_coord = camera.world_to_screen(self.coordinate)
 
         bounds_rect = self.surface.get_rect()
         bounds_rect.w *= camera.scale
         bounds_rect.h *= camera.scale
-        bounds_rect.topleft = adjusted_coord
+        bounds_rect.topleft = screen_coord
         # Don't do the work of scaling an image if it won't be on the screen
         if not bounds_rect.colliderect(TileChunk.SCREEN_RECT):
             return
@@ -50,7 +51,7 @@ class TileChunk:
             self._last_scale = camera.scale
 
 
-        surface.blit(self.scaled_surface, adjusted_coord)
+        surface.blit(self.scaled_surface, screen_coord)
 
         if DRAW_CHUNK_OUTLINES:
             pygame.draw.rect(surface, (255, 0, 0), bounds_rect, 1)

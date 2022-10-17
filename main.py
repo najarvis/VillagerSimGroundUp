@@ -11,13 +11,10 @@ def run():
     
     clock = pygame.time.Clock()
 
-    t = 0
-
     done = False
     while not done:
         # Limit to 60 fps to avoid doing unnecessary work on the CPU
         delta = clock.tick(60) / 1000.0 # time passed in seconds since last call
-        t += delta
         pos = pygame.Vector2(*pygame.mouse.get_pos())
         
         for event in pygame.event.get():
@@ -54,7 +51,7 @@ def run():
                 new_mouse_pos_world = world.camera.screen_to_world(pygame.Vector2(pos))
 
                 # 4
-                world.camera.position += (mouse_pos_world - new_mouse_pos_world)
+                world.camera.position += mouse_pos_world - new_mouse_pos_world
 
         # Pan if the user has their mouse on the outside of the screen
         if pygame.mouse.get_focused():
