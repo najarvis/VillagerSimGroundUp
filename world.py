@@ -17,7 +17,7 @@ from tiles.tile_stone import Stone
 from tiles.tile_snow import Snow
 from tile_chunk import TileChunk
 
-from world_generation.voronoi import worley_noise, worley_noise_val
+from world_generation.noise import worley_noise, worley_noise_val
 
 def easeInExpo(x: float) -> float:
     if x == 0:
@@ -45,7 +45,6 @@ class World():
         self.chunks = [] # list[list[TileChunk]]
         
         self.camera = Camera(pygame.Vector2(WORLD_SIZE[0] / 2, WORLD_SIZE[1] / 2))
-        #self.zoom_timer = 0.0
 
         t0 = time.time()
         self.generate()
@@ -57,9 +56,25 @@ class World():
         print(f"Drawing chunks took {round(t2-t1,2)}s")
 
     def update(self, delta: float) -> None:
-        #self.zoom_timer += delta
-        #self.camera.scale = (math.sin(self.zoom_timer * 2) + 1.5)
         pass
+
+    @staticmethod
+    def calculate_tile(height, humidity, temperature=1.0):
+        """Determine a tile's type based on factors at a given location"""
+        if height < 0.3:
+            return Water
+        elif height < 0.35:
+            return Sand
+        elif height < 0.8:
+            if humidity < 0.3:
+                return Stone
+            if humidity < 0.6:
+                return Dirt
+            return Grass
+        else:
+            if humidity < 0.5:
+                return Stone
+            return Snow
 
     def generate(self) -> None:
         """Generates new terrain. Overwrites previous terrain."""
@@ -74,8 +89,12 @@ class World():
         rand_x = random.uniform(0, 1000)
         rand_y = random.uniform(0, 1000)
         terrain_scale = 8.0 # Higher = more fine detail for the base terrain
+        biome_scale = 4.0
         perturb_scale = 20.0 # How detailed the perturbation is
         perturb_range = 0.15 # How far away a coordinate can be offset by the perturbation
+
+        worley_vec1 = pygame.Vector2(random.uniform(-1000, 1000), random.uniform(-1000, 1000))
+        worley_vec2 = pygame.Vector2(random.uniform(-1000, 1000), random.uniform(-1000, 1000))
 
         center = pygame.Vector2(WORLD_SIZE[0] / 2, WORLD_SIZE[1] / 2)
         heights = []
@@ -109,7 +128,7 @@ class World():
                 # Add in some worley noise. Perturb to add variation to the straight lines of the texture
                 worley_pos = pygame.Vector2(((x + perturb_x) % WORLD_SIZE[0]) / WORLD_SIZE[0], 
                                             ((y + perturb_y) % WORLD_SIZE[1]) / WORLD_SIZE[1])
-                worley_dists = worley_noise(worley_pos)
+                worley_dists = worley_noise(worley_pos, 4, 4, worley_vec1, worley_vec2)
                 worley_val = worley_noise_val(worley_dists, [-1, 1])
 
                 # 2/3 perlin noise and 1/3 worley noise
@@ -126,35 +145,30 @@ class World():
             heights.append(height_row)
 
         t0=time.time()
-        World.thermal_erosion(heights, 20)
+        World.thermal_erosion(heights, 2)
         print(f"Erosion took: {round(time.time()-t0, 2)}s")
         World.hydraulic_erosion(heights)
+
+        print("Calculating humidity map")
+        humidity_map = World.calculate_humidity_map(WORLD_SIZE, heights)
+        print("Done")
 
         for x in range(WORLD_SIZE[0]):
             for y in range(WORLD_SIZE[1]):
                 height = heights[x][y]
+                fx, fy = x / WORLD_SIZE[0], y / WORLD_SIZE[1]
                 # rel_height controls the extra shadow drawn on the tiles. The lower the value the darker [0, 1]
                 # Adds a little bit of visual texture. No functional impact
                 rel_height = 1.0
 
                 tile_type = None
 
+                humidity = 1.0 - (min(WORLD_SIZE[0] / 16, humidity_map[x][y]) / (WORLD_SIZE[0] / 16))
+                tile_type = World.calculate_tile(height, humidity)
                 if height < 0.3:
-                    tile_type = Water
                     rel_height = max(0, height) / 0.3
-                elif height < 0.35:
-                    tile_type = Sand
-                elif height < 0.40:
-                    tile_type = Dirt
-                    rel_height = ((height - 0.35) / 0.4) + 0.7
-                elif height < 0.8:
-                    tile_type = Grass
-                    rel_height = ((height - 0.45) / 0.8) + 0.5
-                elif height < 0.95:
-                    tile_type = Stone
-                    rel_height = ((height - 0.8) / 0.3) + 0.5
                 else:
-                    tile_type = Snow
+                    rel_height = (height - 0.3) / 0.7
                     
                 self.tiles[x][y] = tile_type(pygame.Vector2(x * self.tile_size, y * self.tile_size), self.tile_size, rel_height)
 
@@ -208,6 +222,34 @@ class World():
     @staticmethod
     def hydraulic_erosion(array) -> None:
         NotImplemented
+
+    @staticmethod
+    def calculate_humidity_map(size: tuple[int, int], heights: list[list[float]]) -> list[list[float]]:
+        """TODO: Not really working. Too 'blocky'"""
+
+        # output will hold the distance to the closest water source for a given coordinate 
+        output = [[1000 for _ in range(size[0])] for _ in range(size[1])]
+        # queue contains a list of all possible tile coordinates
+        queue = list((x, y) for x in range(size[0]) for y in range(size[1]))
+        while len(queue) > 0:
+            next_coord = queue.pop()
+            height = heights[next_coord[0]][next_coord[1]]
+            if height < 0.3:
+                # heights are from 0-1 and less than 0.3 is How the game currently defines water
+                output[next_coord[0]][next_coord[1]] = 0
+            else:
+                min_dist = 1000
+                # This gets the coordinates of the 8 surrounding neighbors. Handles edges
+                neighbors = neighbors = World.get_neighborhood(heights, pygame.Vector2(next_coord))
+                for neighbor in neighbors:
+                    min_dist = min(min_dist, output[neighbor[0]][neighbor[1]])
+                    if min_dist == 0:
+                        # If one of the neighboring distances is water, no need to look at the other tiles
+                        break
+                
+                output[next_coord[0]][next_coord[1]] = min_dist + 1
+        return output
+
 
     def render_chunks(self) -> None:
         """Instead of rendering every tile every frame, we can render the tiles to chunks, and then draw whole

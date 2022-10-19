@@ -161,3 +161,4 @@ cython_debug/
 
 # Specific to our project
 SCREENSHOT.png
+world_generation/worley_test.py

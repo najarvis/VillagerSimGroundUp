@@ -12,7 +12,7 @@ class Tile:
             
         self.color = (255, 0, 0) # Red for debug purposes
         self.shadow = pygame.Surface(self.size)
-        self.shadow.set_alpha((1.0 - height) * 140)
+        self.shadow.set_alpha(min(255, (1.0 - height) * 127))
 
     def draw(self, surface, position_override: pygame.Vector2 | None = None) -> None:
         draw_pos = self.position
