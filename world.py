@@ -17,7 +17,7 @@ from tiles.tile_stone import Stone
 from tiles.tile_snow import Snow
 from tile_chunk import TileChunk
 
-from world_generation.noise import worley_noise, worley_noise_val
+from world_generation.noise import worley_noise, worley_noise_val, random1, random2, fBm_noise
 
 def easeInExpo(x: float) -> float:
     if x == 0:
@@ -28,6 +28,18 @@ def easeInExpo(x: float) -> float:
 def noise2D(x: float, y: float) -> float:
     """perlin2D noise from 0-1"""
     return perlin2D(x, y) + 0.5
+
+def timefunc(func):
+    """Decorator that reports the execution time."""
+  
+    def wrap(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        end = time.time()
+          
+        print(f"{func.__name__} took {round(end-start, 3)}s")
+        return result
+    return wrap
 
 class World():
     """Singleton that holds the state of the game world.
@@ -46,14 +58,9 @@ class World():
         
         self.camera = Camera(pygame.Vector2(WORLD_SIZE[0] / 2, WORLD_SIZE[1] / 2))
 
-        t0 = time.time()
         self.generate()
-        t1 = time.time()
-        self.render_chunks()
-        t2 = time.time()
 
-        print(f"Generation took {round(t1-t0,2)}s")
-        print(f"Drawing chunks took {round(t2-t1,2)}s")
+        self.render_chunks()
 
     def update(self, delta: float) -> None:
         pass
@@ -66,30 +73,28 @@ class World():
         elif height < 0.35:
             return Sand
         elif height < 0.8:
-            if humidity < 0.3:
+            if humidity < 0.4:
                 return Stone
-            if humidity < 0.6:
+            if humidity < 0.5:
                 return Dirt
             return Grass
+        elif height < 0.9:
+            if humidity < 0.8:
+                return Stone
+            return Snow
         else:
-            if humidity < 0.5:
+            if humidity < 0.3:
                 return Stone
             return Snow
 
-    def generate(self) -> None:
-        """Generates new terrain. Overwrites previous terrain."""
-
-        # TODO: Different maps (height, temperature, humidity) should be defined
-        # in their own classes, and combined in another class, and then the tiles 
-        # are instanciated and added to the chunk here
-
+    @timefunc
+    def generate_heightmap(self) -> list[list[float]]:
         # rand_x and rand_y are effectively the "seed" for the noise, but 
         # are more accurately the position from which we start looking at
         # the noise function
         rand_x = random.uniform(0, 1000)
         rand_y = random.uniform(0, 1000)
         terrain_scale = 8.0 # Higher = more fine detail for the base terrain
-        biome_scale = 4.0
         perturb_scale = 20.0 # How detailed the perturbation is
         perturb_range = 0.15 # How far away a coordinate can be offset by the perturbation
 
@@ -143,15 +148,22 @@ class World():
                 height_row[y] = height
                 
             heights.append(height_row)
+        
+        return heights
 
-        t0=time.time()
-        World.thermal_erosion(heights, 2)
-        print(f"Erosion took: {round(time.time()-t0, 2)}s")
+    def generate(self) -> None:
+        """Generates new terrain. Overwrites previous terrain."""
+
+        # TODO: Different maps (height, temperature, humidity) should be defined
+        # in their own classes, and combined in another class, and then the tiles 
+        # are instanciated and added to the chunk here
+
+        heights = self.generate_heightmap()
+
+        World.thermal_erosion(heights, 5)
         World.hydraulic_erosion(heights)
 
-        print("Calculating humidity map")
-        humidity_map = World.calculate_humidity_map(WORLD_SIZE, heights)
-        print("Done")
+        humidity_map = World.calculate_humidity_map_ff(heights)
 
         for x in range(WORLD_SIZE[0]):
             for y in range(WORLD_SIZE[1]):
@@ -163,7 +175,10 @@ class World():
 
                 tile_type = None
 
-                humidity = 1.0 - (min(WORLD_SIZE[0] / 16, humidity_map[x][y]) / (WORLD_SIZE[0] / 16))
+                max_humidity_distance = WORLD_SIZE[0] / 10
+                humidity = 1.0 - (min(max_humidity_distance, humidity_map[x][y]) / max_humidity_distance)
+                humidity += fBm_noise(pygame.Vector2(fx, fy), 5, frequency=8.0)
+                humidity /= 2.0
                 tile_type = World.calculate_tile(height, humidity)
                 if height < 0.3:
                     rel_height = max(0, height) / 0.3
@@ -173,7 +188,7 @@ class World():
                 self.tiles[x][y] = tile_type(pygame.Vector2(x * self.tile_size, y * self.tile_size), self.tile_size, rel_height)
 
     @staticmethod
-    def get_neighborhood(array, coord: pygame.Vector2) -> list:
+    def get_moore_neighborhood(array, coord: pygame.Vector2) -> list:
         if len(array) == 0 or len(array[0]) == 0:
             return []
 
@@ -187,6 +202,24 @@ class World():
         return return_arr
 
     @staticmethod
+    def get_vnn_neighborhood(array, coord: pygame.Vector2 | tuple[int, int]) -> list:
+        if len(array) == 0 or len(array[0]) == 0:
+            return []
+
+        return_arr = []
+        if coord[0] > 0:
+            return_arr.append((int(coord[0] - 1), int(coord[1])))
+        if coord[0] < len(array) - 1:
+            return_arr.append((int(coord[0]) + 1, int(coord[1])))
+        if coord[1] > 0:
+            return_arr.append((int(coord[0]), int(coord[1] - 1)))
+        if coord[1] < len(array[0]) - 1:
+            return_arr.append((int(coord[0]), int(coord[1] + 1)))
+
+        return return_arr
+
+    @timefunc
+    @staticmethod
     def thermal_erosion(height_map: list[list[float]], iterations: int) -> None:
         """Iterate over a height map and simulate thermal erosion. This involves
         reducing moving material from very steep areas to the surrounding areas.
@@ -198,7 +231,7 @@ class World():
             adjusted = False
             for row_y, row in enumerate(height_map):
                 for row_x, height in enumerate(row):
-                    neighbors = World.get_neighborhood(height_map, pygame.Vector2(row_x, row_y))
+                    neighbors = World.get_vnn_neighborhood(height_map, pygame.Vector2(row_x, row_y))
                     delta_total = 0
                     delta_max = 0
                     move_to_cells = []
@@ -219,38 +252,55 @@ class World():
             if not adjusted:
                 break
 
+    @timefunc
     @staticmethod
     def hydraulic_erosion(array) -> None:
         NotImplemented
 
+    @timefunc
     @staticmethod
-    def calculate_humidity_map(size: tuple[int, int], heights: list[list[float]]) -> list[list[float]]:
-        """TODO: Not really working. Too 'blocky'"""
+    def calculate_humidity_map_ff(heights, water_height=0.3):
+        """Given a height map, create a map where each entry is the distance
+        from the nearest water source. Returns an array with the same
+        dimensions as `heights`
+        """
 
-        # output will hold the distance to the closest water source for a given coordinate 
-        output = [[1000 for _ in range(size[0])] for _ in range(size[1])]
-        # queue contains a list of all possible tile coordinates
-        queue = list((x, y) for x in range(size[0]) for y in range(size[1]))
-        while len(queue) > 0:
-            next_coord = queue.pop()
-            height = heights[next_coord[0]][next_coord[1]]
-            if height < 0.3:
-                # heights are from 0-1 and less than 0.3 is How the game currently defines water
-                output[next_coord[0]][next_coord[1]] = 0
-            else:
-                min_dist = 1000
-                # This gets the coordinates of the 8 surrounding neighbors. Handles edges
-                neighbors = neighbors = World.get_neighborhood(heights, pygame.Vector2(next_coord))
-                for neighbor in neighbors:
-                    min_dist = min(min_dist, output[neighbor[0]][neighbor[1]])
-                    if min_dist == 0:
-                        # If one of the neighboring distances is water, no need to look at the other tiles
-                        break
-                
-                output[next_coord[0]][next_coord[1]] = min_dist + 1
+        assert len(heights) > 0 and len(heights[0]) > 0
+
+        size_x = len(heights)
+        size_y = len(heights[0])
+
+        output = [[None for _ in range(size_x)] for _ in range(size_y)]
+        unseen = set(list((x, y) for x in range(size_x) for y in range(size_y)))
+        
+        # Step 1: Add all water as edge tiles
+        edges = set()
+        for x in range(size_x):
+            for y in range(size_y):
+                # Just look at water first
+                if heights[x][y] < water_height:
+                    output[x][y] = 0
+
+                    unseen.remove((x, y))
+                    edges.add((x, y))
+
+        # Use flood fill to expand from the edge of water one tile at a time
+        distance = 1
+        while len(unseen) > 0:
+            old_edges = list(edges)
+            # Empty edges, because we want to look at each 'ring' of distances one at a time
+            edges = set()
+            for edge in old_edges:
+                for coord in World.get_vnn_neighborhood(heights, edge):
+                    if coord in unseen:
+                        edges.add(coord)
+                        unseen.remove(coord)
+                        output[coord[0]][coord[1]] = distance
+            distance += 1
+
         return output
 
-
+    @timefunc
     def render_chunks(self) -> None:
         """Instead of rendering every tile every frame, we can render the tiles to chunks, and then draw whole
         chunks at a time. If a tile needs to be updated only the chunk needs to be re-rendered.
