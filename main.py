@@ -53,6 +53,12 @@ def run():
                 # 4
                 world.camera.position += mouse_pos_world - new_mouse_pos_world
 
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                chunk_pos = world.get_corresponding_chunk(world.camera.screen_to_world(pygame.Vector2(pos)))
+                print(chunk_pos)
+                world.generate_chunk(chunk_pos)
+                world.render_chunks()
+
         # Pan if the user has their mouse on the outside of the screen
         if pygame.mouse.get_focused():
             if pos.x < SCREEN_SIZE[0] * 0.10:
@@ -78,4 +84,4 @@ def run():
         pygame.display.set_caption(f"FPS: {round(clock.get_fps(), 2)}")
 
 if __name__ == "__main__":
-    run()
+    run() 

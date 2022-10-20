@@ -1,3 +1,4 @@
+import chunk
 import math
 import random
 import pygame
@@ -37,7 +38,7 @@ def timefunc(func):
         result = func(*args, **kwargs)
         end = time.time()
           
-        print(f"{func.__name__} took {round(end-start, 3)}s")
+        # print(f"{func.__name__} took {round(end-start, 3)}s")
         return result
     return wrap
 
@@ -54,16 +55,87 @@ class World():
             for _ in range(WORLD_SIZE[1])]
 
         # Only store chunks, don't store tiles directly. 
-        self.chunks = [] # list[list[TileChunk]]
+        self.chunks = {} # list[list[TileChunk]]
         
         self.camera = Camera(pygame.Vector2(WORLD_SIZE[0] / 2, WORLD_SIZE[1] / 2))
 
-        self.generate()
+        self.rand_seed_x = random.uniform(0, 1000)
+        self.rand_seed_y = random.uniform(0, 1000)
 
-        self.render_chunks()
+        self.chunk_coords = {}
+        self.edge_chunks = set()
+        #self.generate()
+
+        #self.render_chunks()
 
     def update(self, delta: float) -> None:
-        pass
+        looking_at_chunk = self.get_corresponding_chunk(self.camera.get_position())
+        chunk_pos = (int(looking_at_chunk.x), int(looking_at_chunk.y))
+        if chunk_pos not in self.chunks:
+            self.generate_chunk(looking_at_chunk)
+            
+            top    = (chunk_pos[0], chunk_pos[1] + CHUNK_SIZE[1])
+            bottom = (chunk_pos[0], chunk_pos[1] - CHUNK_SIZE[1])
+            left   = (chunk_pos[0] - CHUNK_SIZE[0], chunk_pos[1])
+            right  = (chunk_pos[0] + CHUNK_SIZE[0], chunk_pos[1])
+
+            for pos in (top, bottom, left, right):
+                if pos not in self.chunk_coords:
+                    self.edge_chunks.add(pos)
+
+        else:
+            non_visible = set()
+            while len(self.edge_chunks) > 0:
+                new_pos = self.edge_chunks.pop()
+                screen_coord = self.camera.world_to_screen((new_pos[0] + 8, new_pos[1] + 8))
+                bounds_rect = pygame.Rect(0, 0, *CHUNK_SIZE)
+                bounds_rect.w *= self.camera.scale
+                bounds_rect.h *= self.camera.scale
+                bounds_rect.topleft = screen_coord
+                # Don't do the work of scaling an image if it won't be on the screen
+                if not bounds_rect.colliderect(TileChunk.SCREEN_RECT):
+                    # non_visible.add(new_pos)
+                    continue
+                
+                self.generate_chunk(pygame.Vector2(new_pos))
+                
+                top    = (new_pos[0], new_pos[1] + CHUNK_SIZE[1])
+                bottom = (new_pos[0], new_pos[1] - CHUNK_SIZE[1])
+                left   = (new_pos[0] - CHUNK_SIZE[0], new_pos[1])
+                right  = (new_pos[0] + CHUNK_SIZE[0], new_pos[1])
+
+                for pos in (top, bottom, left, right):
+                    if pos not in self.chunks:
+                        non_visible.add(pos)
+
+            self.edge_chunks = non_visible
+        self.render_chunks()
+
+
+    def generate(self) -> None:
+        """Generates new terrain. Overwrites previous terrain."""
+
+        # TODO: Different maps (height, temperature, humidity) should be defined
+        # in their own classes, and combined in another class, and then the tiles 
+        # are instanciated and added to the chunk here
+
+        for x in range(5):
+            for y in range(5):
+                position = pygame.Vector2(x * CHUNK_SIZE[0], y * CHUNK_SIZE[1])
+                self.generate_chunk(position)
+                print(position)
+
+    def generate_chunk(self, position):
+        heights = self.generate_heightmap(position)
+        humidity_map = [[0] * CHUNK_SIZE[0]] * CHUNK_SIZE[1]
+        #humidity_map = World.calculate_humidity_map_ff(heights)
+        chunk_tiles = self.generate_tiles(position, heights, humidity_map)
+        self.chunks[(int(position.x), int(position.y))] = TileChunk(position, chunk_tiles, self)
+
+    def get_corresponding_chunk(self, coord):
+        chunk_x = (coord[0] // CHUNK_SIZE[0]) * CHUNK_SIZE[0]
+        chunk_y = (coord[1] // CHUNK_SIZE[1]) * CHUNK_SIZE[1]
+        return pygame.Vector2(chunk_x, chunk_y)
 
     @staticmethod
     def calculate_tile(height, humidity, temperature=1.0):
@@ -88,33 +160,37 @@ class World():
             return Snow
 
     @timefunc
-    def generate_heightmap(self) -> list[list[float]]:
+    def generate_heightmap(self, position=(0, 0), chunk_size=CHUNK_SIZE, worley_vec1 = pygame.Vector2(127.5123, 247.124), worley_vec2=pygame.Vector2(523.216, 112.351)) -> list[list[float]]:
         # rand_x and rand_y are effectively the "seed" for the noise, but 
         # are more accurately the position from which we start looking at
         # the noise function
-        rand_x = random.uniform(0, 1000)
-        rand_y = random.uniform(0, 1000)
+        rand_x = self.rand_seed_x
+        rand_y = self.rand_seed_y
         terrain_scale = 8.0 # Higher = more fine detail for the base terrain
         perturb_scale = 20.0 # How detailed the perturbation is
-        perturb_range = 0.15 # How far away a coordinate can be offset by the perturbation
 
-        worley_vec1 = pygame.Vector2(random.uniform(-1000, 1000), random.uniform(-1000, 1000))
-        worley_vec2 = pygame.Vector2(random.uniform(-1000, 1000), random.uniform(-1000, 1000))
+        #worley_vec1 = pygame.Vector2(random.uniform(-1000, 1000), random.uniform(-1000, 1000))
+        #worley_vec2 = pygame.Vector2(random.uniform(-1000, 1000), random.uniform(-1000, 1000))
 
+        #center = pygame.Vector2(chunk_size[0] / 2, chunk_size[1] / 2)
         center = pygame.Vector2(WORLD_SIZE[0] / 2, WORLD_SIZE[1] / 2)
-        heights = []
+        heights = [[None for _ in range(chunk_size[0])] for _ in range(chunk_size[1])]
 
-        for x in range(WORLD_SIZE[0]):
-            height_row = [0] * WORLD_SIZE[1]
-            for y in range(WORLD_SIZE[1]):
+        for x_int in range(chunk_size[0]):
+            for y_int in range(chunk_size[1]):
+                x = float(x_int + position[0])
+                y = float(y_int + position[1])
                 # Perturbing will adjust what coordinate we're looking at in the noise function
                 # Add 3 octaves of noise for the perturbation. May be overkill but looks nice
                 perturb_noise_coord = pygame.Vector2((x + rand_x) * perturb_scale / WORLD_SIZE[0],
                                                      (y + rand_y) * perturb_scale / WORLD_SIZE[1])
                 perturb_amount = noise2D(*(perturb_noise_coord)) + \
-                                 0.50 * noise2D(*(perturb_noise_coord * 2)) + \
-                                 0.25 * noise2D(*(perturb_noise_coord * 4))
+                                    0.50 * noise2D(*(perturb_noise_coord * 2)) + \
+                                    0.25 * noise2D(*(perturb_noise_coord * 4))
                 perturb_amount /= (1 + 0.5 + 0.25) # Normalize range to [0, 1]
+
+                # How far away a coordinate can be offset by the perturbation
+                perturb_range = fBm_noise(pygame.Vector2(x, y), 5, frequency=8) * 0.3
 
                 # We create an offset by treating the noise value (perturb_amount) as a
                 # random angle, then creating a vector pointing in that direction.
@@ -145,29 +221,15 @@ class World():
 
                 # don't remove much near the middle, only on the edges
                 height = h_val - easeInExpo(radial_value)
-                height_row[y] = height
-                
-            heights.append(height_row)
-        
+                heights[y_int][x_int] = height
+
         return heights
 
-    def generate(self) -> None:
-        """Generates new terrain. Overwrites previous terrain."""
-
-        # TODO: Different maps (height, temperature, humidity) should be defined
-        # in their own classes, and combined in another class, and then the tiles 
-        # are instanciated and added to the chunk here
-
-        heights = self.generate_heightmap()
-
-        World.thermal_erosion(heights, 5)
-        World.hydraulic_erosion(heights)
-
-        humidity_map = World.calculate_humidity_map_ff(heights)
-
-        for x in range(WORLD_SIZE[0]):
-            for y in range(WORLD_SIZE[1]):
-                height = heights[x][y]
+    def generate_tiles(self, position, heights, humidity_map, chunk_size=CHUNK_SIZE):
+        tiles = [[None for _ in range(chunk_size[0])] for _ in range(chunk_size[1])]
+        for y in range(int(position[1]), int(position[1]) + chunk_size[1]):
+            for x in range(int(position[0]), int(position[0]) + chunk_size[0]):
+                height = heights[y % chunk_size[0]][x % chunk_size[1]]
                 fx, fy = x / WORLD_SIZE[0], y / WORLD_SIZE[1]
                 # rel_height controls the extra shadow drawn on the tiles. The lower the value the darker [0, 1]
                 # Adds a little bit of visual texture. No functional impact
@@ -176,7 +238,7 @@ class World():
                 tile_type = None
 
                 max_humidity_distance = WORLD_SIZE[0] / 10
-                humidity = 1.0 - (min(max_humidity_distance, humidity_map[x][y]) / max_humidity_distance)
+                humidity = 1.0 - (min(max_humidity_distance, humidity_map[y % chunk_size[0]][x % chunk_size[1]]) / max_humidity_distance)
                 humidity += fBm_noise(pygame.Vector2(fx, fy), 5, frequency=8.0)
                 humidity /= 2.0
                 tile_type = World.calculate_tile(height, humidity)
@@ -185,7 +247,9 @@ class World():
                 else:
                     rel_height = (height - 0.3) / 0.7
                     
-                self.tiles[x][y] = tile_type(pygame.Vector2(x * self.tile_size, y * self.tile_size), self.tile_size, rel_height)
+                tiles[y % chunk_size[1]][x % chunk_size[0]] = tile_type(pygame.Vector2(x * self.tile_size, y * self.tile_size), self.tile_size, rel_height)
+
+        return tiles
 
     @staticmethod
     def get_moore_neighborhood(array, coord: pygame.Vector2) -> list:
@@ -305,36 +369,11 @@ class World():
         """Instead of rendering every tile every frame, we can render the tiles to chunks, and then draw whole
         chunks at a time. If a tile needs to be updated only the chunk needs to be re-rendered.
         """
-
-        # TODO: The individual tile rendering should be done on the chunk level.
-
-        # 2D array of TileChunk instances
-        self.chunks = []
-
-        # This quad nested for loop will hit the inner code once for each tile in the world
-        for x in range(WORLD_SIZE[0] // CHUNK_SIZE[0]):
-            chunk_row = []
-            for y in range(WORLD_SIZE[1] // CHUNK_SIZE[1]):
-                # The chunks are surfaces we pre-render to speed up drawing and updating the tiles each frame
-                new_chunk = TileChunk(pygame.Vector2(x * CHUNK_SIZE[0], y * CHUNK_SIZE[1]))
-                chunk_surf = new_chunk.get_chunk_surf()
-
-                for tile_x in range(x * CHUNK_SIZE[0], x * CHUNK_SIZE[0] + CHUNK_SIZE[0]):
-                    for tile_y in range(y * CHUNK_SIZE[1], y * CHUNK_SIZE[1] + CHUNK_SIZE[1]):
-                        # If we try to draw a tile that's in the middle of the world on a chunk without wrapping
-                        # its position it will draw off the chunk
-                        wrap_pos_x = tile_x % CHUNK_SIZE[0]
-                        wrap_pos_y = tile_y % CHUNK_SIZE[1]
-                        draw_pos = pygame.Vector2(wrap_pos_x * TILE_SIZE[0], wrap_pos_y * TILE_SIZE[1])
-
-                        self.tiles[tile_x][tile_y].draw(chunk_surf, draw_pos)
-
-                chunk_row.append(new_chunk)
-            self.chunks.append(chunk_row)
+        for chunk_pos in self.chunks:
+            self.chunks[chunk_pos].render()
 
     def draw(self, surface: pygame.Surface) -> None:
         """Draw the whole world, by going through each chunk"""
 
-        for chunk_row in self.chunks:
-            for chunk in chunk_row:
-                chunk.draw(surface, self.camera)
+        for chunk_pos in self.chunks:
+            self.chunks[chunk_pos].draw(surface, self.camera)

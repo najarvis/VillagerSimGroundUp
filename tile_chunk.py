@@ -15,7 +15,7 @@ class TileChunk:
 
     SCREEN_RECT = pygame.Rect((0, 0, *SCREEN_SIZE))
 
-    def __init__(self, coordinate: pygame.Vector2, world=None):
+    def __init__(self, coordinate: pygame.Vector2, tiles, world=None):
         self.coordinate = coordinate # These are in tile coordinates, not pixel coordinates
         self.width_px  = CHUNK_SIZE[0] * TILE_SIZE[0]
         self.height_px = CHUNK_SIZE[1] * TILE_SIZE[1]
@@ -23,13 +23,23 @@ class TileChunk:
         self.scaled_surface = None
         self._last_scale = None
         self.world = world
-        self.tiles = [] # Store tiles here
+        self.tiles = tiles
+        self.isdirty = True
 
     def draw_to_chunk(self, surface, coordinate) -> None:
         self.surface.blit(surface, coordinate)
 
     def get_chunk_surf(self) -> pygame.Surface:
         return self.surface
+
+    def render(self):
+        if self.isdirty:
+            for tile_y, tile_row in enumerate(self.tiles):
+                for tile_x, tile in enumerate(tile_row):
+                    draw_pos = pygame.Vector2(tile_x * TILE_SIZE[0], tile_y * TILE_SIZE[1])
+                    tile.draw(self.surface, draw_pos)
+
+            self.isdirty = False
 
     def draw(self, surface, camera: Camera) -> None:
         screen_coord = camera.world_to_screen(self.coordinate)
