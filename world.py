@@ -206,14 +206,17 @@ class World():
                         0.25 * noise2D(*(noise_coord * 4))
                 p_val /= (1 + 0.5 + 0.25) # Normalize range to [0, 1]
 
-                # Add in some worley noise. Perturb to add variation to the straight lines of the texture
-                worley_pos = pygame.Vector2(((x + perturb_x) % WORLD_SIZE[0]) / WORLD_SIZE[0], 
-                                            ((y + perturb_y) % WORLD_SIZE[1]) / WORLD_SIZE[1])
-                worley_dists = worley_noise(worley_pos, 4, 4, worley_vec1, worley_vec2)
-                worley_val = worley_noise_val(worley_dists, [-1, 1])
+                large_scale_noise = noise2D(*(noise_coord / 16))
+                p_val *= large_scale_noise
+
+                # # Add in some worley noise. Perturb to add variation to the straight lines of the texture
+                # worley_pos = pygame.Vector2(((x + perturb_x) % WORLD_SIZE[0]) / WORLD_SIZE[0], 
+                #                             ((y + perturb_y) % WORLD_SIZE[1]) / WORLD_SIZE[1])
+                # worley_dists = worley_noise(worley_pos, 4, 4, worley_vec1, worley_vec2)
+                # worley_val = worley_noise_val(worley_dists, [-1, 1])
 
                 # 2/3 perlin noise and 1/3 worley noise
-                h_val = p_val * 0.66 + worley_val * 0.33
+                h_val = p_val #p_val * 0.66 + worley_val * 0.33
                 
                 # Distance from the center, divided by the distance to the closest edge. Will
                 # return 1 for coordinates on the midpoints of edges and > 1 for values closer to the corners
@@ -221,7 +224,7 @@ class World():
 
                 # don't remove much near the middle, only on the edges
                 height = h_val - easeInExpo(radial_value)
-                heights[y_int][x_int] = height
+                heights[y_int][x_int] = h_val
 
         return heights
 

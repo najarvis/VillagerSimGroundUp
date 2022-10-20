@@ -7,20 +7,20 @@ def sin01(val: float) -> float:
     return (1.0 + math.sin(val)) / 2.0
 
 def random1(pos: pygame.Vector2, seed_vec=pygame.Vector2(12.9898,78.233)) -> float:
-    intermediate = (sin01(pos.dot(seed_vec))) * 43758.5453123
-    return math.modf(intermediate)[0]
+    intermediate = math.sin(pos.dot(seed_vec)) * 43758.5453123
+    return abs(math.modf(intermediate)[0])
 
 def random2(pos: pygame.Vector2, seed_vec1=pygame.Vector2(127.1,311.7), seed_vec2=pygame.Vector2(269.5,183.3)) -> pygame.Vector2:
     # https://thebookofshaders.com/12/
     intermediate = pygame.Vector2(pos.dot(seed_vec1), pos.dot(seed_vec2))
-    intermediate2 = pygame.Vector2(sin01(intermediate.x), sin01(intermediate.y)) * 43758.5453
+    intermediate2 = pygame.Vector2(math.sin(intermediate.x), math.sin(intermediate.y)) * 43758.5453
     return vec2_components(intermediate2)[0]
 
 def vec2_components(vec: pygame.Vector2) -> tuple[pygame.Vector2, pygame.Vector2]:
     """Return the integer and fractional components of a vector separately"""
     x_components = math.modf(vec.x)
     y_components = math.modf(vec.y)
-    f_st = pygame.Vector2(x_components[0], y_components[0])
+    f_st = pygame.Vector2(abs(x_components[0]), abs(y_components[0]))
     i_st = pygame.Vector2(x_components[1], y_components[1])
     return (f_st, i_st)
 
