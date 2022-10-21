@@ -72,8 +72,9 @@ class World():
         looking_at_chunk = self.get_corresponding_chunk(self.camera.get_position())
         chunk_pos = (int(looking_at_chunk.x), int(looking_at_chunk.y))
         if chunk_pos not in self.chunks:
-            self.generate_chunk(looking_at_chunk)
-            
+            new_chunk = self.generate_chunk(looking_at_chunk)
+            new_chunk.render()
+
             top    = (chunk_pos[0], chunk_pos[1] + CHUNK_SIZE[1])
             bottom = (chunk_pos[0], chunk_pos[1] - CHUNK_SIZE[1])
             left   = (chunk_pos[0] - CHUNK_SIZE[0], chunk_pos[1])
@@ -87,8 +88,8 @@ class World():
             non_visible = set()
             while len(self.edge_chunks) > 0:
                 new_pos = self.edge_chunks.pop()
-                screen_coord = self.camera.world_to_screen((new_pos[0] + 8, new_pos[1] + 8))
-                bounds_rect = pygame.Rect(0, 0, *CHUNK_SIZE)
+                screen_coord = self.camera.world_to_screen((new_pos[0], new_pos[1]))
+                bounds_rect = pygame.Rect(0, 0, CHUNK_SIZE[0] * TILE_SIZE[0], CHUNK_SIZE[1] * TILE_SIZE[1])
                 bounds_rect.w *= self.camera.scale
                 bounds_rect.h *= self.camera.scale
                 bounds_rect.topleft = screen_coord
@@ -97,7 +98,8 @@ class World():
                     # non_visible.add(new_pos)
                     continue
                 
-                self.generate_chunk(pygame.Vector2(new_pos))
+                new_chunk = self.generate_chunk(pygame.Vector2(new_pos))
+                new_chunk.render()
                 
                 top    = (new_pos[0], new_pos[1] + CHUNK_SIZE[1])
                 bottom = (new_pos[0], new_pos[1] - CHUNK_SIZE[1])
@@ -109,7 +111,7 @@ class World():
                         non_visible.add(pos)
 
             self.edge_chunks = non_visible
-        self.render_chunks()
+        #self.render_chunks()
 
 
     def generate(self) -> None:
@@ -127,10 +129,12 @@ class World():
 
     def generate_chunk(self, position):
         heights = self.generate_heightmap(position)
-        humidity_map = [[0] * CHUNK_SIZE[0]] * CHUNK_SIZE[1]
-        #humidity_map = World.calculate_humidity_map_ff(heights)
+        humidity_map = [[0 for _ in range(CHUNK_SIZE[0])] for _ in range(CHUNK_SIZE[1])]
+        # humidity_map = World.calculate_humidity_map_ff(chunk_pos)
         chunk_tiles = self.generate_tiles(position, heights, humidity_map)
-        self.chunks[(int(position.x), int(position.y))] = TileChunk(position, chunk_tiles, self)
+        new_chunk = TileChunk(position, chunk_tiles, self)
+        self.chunks[(int(position.x), int(position.y))] = new_chunk
+        return new_chunk
 
     def get_corresponding_chunk(self, coord):
         chunk_x = (coord[0] // CHUNK_SIZE[0]) * CHUNK_SIZE[0]
@@ -140,9 +144,9 @@ class World():
     @staticmethod
     def calculate_tile(height, humidity, temperature=1.0):
         """Determine a tile's type based on factors at a given location"""
-        if height < 0.3:
+        if height < 0.25:
             return Water
-        elif height < 0.35:
+        elif height < 0.30:
             return Sand
         elif height < 0.8:
             if humidity < 0.4:
@@ -206,25 +210,26 @@ class World():
                         0.25 * noise2D(*(noise_coord * 4))
                 p_val /= (1 + 0.5 + 0.25) # Normalize range to [0, 1]
 
-                large_scale_noise = noise2D(*(noise_coord / 16))
-                p_val *= large_scale_noise
+                large_scale_noise = (noise2D(*(noise_coord / 16)) + 0.5 * noise2D(*(noise_coord / 32))) / 1.5
+                p_val += large_scale_noise
+                p_val /= 2.0
 
                 # # Add in some worley noise. Perturb to add variation to the straight lines of the texture
-                # worley_pos = pygame.Vector2(((x + perturb_x) % WORLD_SIZE[0]) / WORLD_SIZE[0], 
-                #                             ((y + perturb_y) % WORLD_SIZE[1]) / WORLD_SIZE[1])
+                # worley_pos = pygame.Vector2((x + perturb_x) / WORLD_SIZE[0], 
+                #                             (y + perturb_y) / WORLD_SIZE[1])
                 # worley_dists = worley_noise(worley_pos, 4, 4, worley_vec1, worley_vec2)
                 # worley_val = worley_noise_val(worley_dists, [-1, 1])
 
                 # 2/3 perlin noise and 1/3 worley noise
-                h_val = p_val #p_val * 0.66 + worley_val * 0.33
+                # h_val = p_val * 0.66 + worley_val * 0.33
                 
                 # Distance from the center, divided by the distance to the closest edge. Will
                 # return 1 for coordinates on the midpoints of edges and > 1 for values closer to the corners
                 radial_value = pygame.Vector2(x, y).distance_to(center) / min(center.x, center.y)
 
                 # don't remove much near the middle, only on the edges
-                height = h_val - easeInExpo(radial_value)
-                heights[y_int][x_int] = h_val
+                # height = h_val - easeInExpo(radial_value)
+                heights[y_int][x_int] = p_val
 
         return heights
 
@@ -242,13 +247,14 @@ class World():
 
                 max_humidity_distance = WORLD_SIZE[0] / 10
                 humidity = 1.0 - (min(max_humidity_distance, humidity_map[y % chunk_size[0]][x % chunk_size[1]]) / max_humidity_distance)
-                humidity += fBm_noise(pygame.Vector2(fx, fy), 5, frequency=8.0)
+                humidity_add = fBm_noise(pygame.Vector2(fx, fy), 5, frequency=8.0)
+                humidity += humidity_add
                 humidity /= 2.0
-                tile_type = World.calculate_tile(height, humidity)
-                if height < 0.3:
-                    rel_height = max(0, height) / 0.3
+                tile_type = World.calculate_tile(height, humidity_add)
+                if height < 0.25:
+                    rel_height = max(0, height) / 0.25
                 else:
-                    rel_height = (height - 0.3) / 0.7
+                    rel_height = (height - 0.25) / 0.75
                     
                 tiles[y % chunk_size[1]][x % chunk_size[0]] = tile_type(pygame.Vector2(x * self.tile_size, y * self.tile_size), self.tile_size, rel_height)
 
@@ -326,7 +332,7 @@ class World():
 
     @timefunc
     @staticmethod
-    def calculate_humidity_map_ff(heights, water_height=0.3):
+    def calculate_humidity_map_ff(heights, water_height=0.25):
         """Given a height map, create a map where each entry is the distance
         from the nearest water source. Returns an array with the same
         dimensions as `heights`

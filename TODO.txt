@@ -5,3 +5,5 @@
 - biomes
     - temperature
     - humidity / moisture
+
+At some point I'm going to have to start saving off chunks if the world is infinite

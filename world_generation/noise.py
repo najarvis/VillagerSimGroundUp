@@ -1,6 +1,7 @@
 import math
 import random
 import pygame
+import functools
 
 def sin01(val: float) -> float:
     """Returns the sine of a value mapped between 0 and 1"""
@@ -8,7 +9,7 @@ def sin01(val: float) -> float:
 
 def random1(pos: pygame.Vector2, seed_vec=pygame.Vector2(12.9898,78.233)) -> float:
     intermediate = math.sin(pos.dot(seed_vec)) * 43758.5453123
-    return abs(math.modf(intermediate)[0])
+    return divmod(intermediate, 1)[1]
 
 def random2(pos: pygame.Vector2, seed_vec1=pygame.Vector2(127.1,311.7), seed_vec2=pygame.Vector2(269.5,183.3)) -> pygame.Vector2:
     # https://thebookofshaders.com/12/
@@ -18,10 +19,10 @@ def random2(pos: pygame.Vector2, seed_vec1=pygame.Vector2(127.1,311.7), seed_vec
 
 def vec2_components(vec: pygame.Vector2) -> tuple[pygame.Vector2, pygame.Vector2]:
     """Return the integer and fractional components of a vector separately"""
-    x_components = math.modf(vec.x)
-    y_components = math.modf(vec.y)
-    f_st = pygame.Vector2(abs(x_components[0]), abs(y_components[0]))
-    i_st = pygame.Vector2(x_components[1], y_components[1])
+    x_components = divmod(vec.x, 1)
+    y_components = divmod(vec.y, 1)
+    f_st = pygame.Vector2(x_components[1], y_components[1])
+    i_st = pygame.Vector2(x_components[0], y_components[0])
     return (f_st, i_st)
 
 def lerp(a, b, t):
@@ -54,12 +55,12 @@ def smooth_noise(position: pygame.Vector2, interpolation_method=quintic_interpol
     u_y = interpolation_method(0.0, 1.0, f_st.y)
 
     # The return line is equivalent to an optimized version of:
-    # f_xy1 = lerp(topleft, topright, u_x)
-    # f_xy2 = lerp(bottomleft, bottomright, u_x)
-    # f_xy = lerp(f_xy1, f_xy2, u_y)
-    # return f_xy
+    f_xy1 = lerp(topleft, topright, u_x)
+    f_xy2 = lerp(bottomleft, bottomright, u_x)
+    f_xy = lerp(f_xy1, f_xy2, u_y)
+    return f_xy
 
-    return lerp(topleft, topright, u_x) + (bottomleft - topleft) * u_y * (1.0 - u_x) + (bottomright - topright) * u_x * u_y
+    # return lerp(topleft, topright, u_x) + (bottomleft - topleft) * u_y * (1.0 - u_x) + (bottomright - topright) * u_x * u_y
 
 def fBm_noise(position: pygame.Vector2, octaves: int, amplitude: float = 0.5, frequency: float = 1.0, lacunarity: float = 2.0, gain: float = 0.5, **smooth_noise_kwargs) -> float:
     """Fractal brownian motion noise. Add octaves of noise to create"""
